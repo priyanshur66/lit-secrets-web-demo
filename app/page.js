@@ -33,21 +33,32 @@ const RunLitActions = () => {
         throw new Error("Please install MetaMask to use this application");
       }
 
+      const accounts = await window.ethereum.request({
+        method: 'eth_requestAccounts',
+        params: []
+      });
+
+      if (!accounts || accounts.length === 0) {
+        throw new Error("No accounts found");
+      }
+
       const provider = new ethers.providers.Web3Provider(window.ethereum);
-      await provider.send("eth_requestAccounts", []);
       const signer = provider.getSigner();
-      const address = await signer.getAddress();
-
+      
       setEthersWallet(signer);
-      setWalletAddress(address);
+      setWalletAddress(accounts[0]);
 
-      // Initialize Lit Node Client after wallet connection
       const litNodeClient = new LitNodeClient({
         litNetwork: LitNetwork.DatilDev,
         debug: false,
       });
       await litNodeClient.connect();
       setLitNodeClient(litNodeClient);
+
+      window.ethereum.on('accountsChanged', handleAccountsChanged);
+      
+      window.ethereum.on('chainChanged', handleChainChanged);
+
     } catch (err) {
       console.error("Wallet connection error:", err);
       setError(err.message);
@@ -55,6 +66,30 @@ const RunLitActions = () => {
       setIsConnecting(false);
     }
   };
+
+  const handleAccountsChanged = (accounts) => {
+    if (accounts.length === 0) {
+      setWalletAddress("");
+      setEthersWallet(null);
+    } else {
+     
+      setWalletAddress(accounts[0]);
+    }
+  };
+
+  const handleChainChanged = () => {
+    
+    window.location.reload();
+  };
+
+  useEffect(() => {
+    return () => {
+      if (window.ethereum) {
+        window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
+        window.ethereum.removeListener('chainChanged', handleChainChanged);
+      }
+    };
+  }, []);
 
   const runLitAction = async () => {
     try {
@@ -66,6 +101,15 @@ const RunLitActions = () => {
         parsedEncryptedData = JSON.parse(encryptedDataString);
       } catch (e) {
         throw new Error("Invalid JSON format for encrypted data");
+      }
+
+    
+      const accounts = await window.ethereum.request({
+        method: 'eth_accounts'
+      });
+      
+      if (!accounts || accounts.length === 0) {
+        throw new Error("Wallet disconnected. Please reconnect to continue.");
       }
 
       const sessionSignatures = await litNodeClient.getSessionSigs({
